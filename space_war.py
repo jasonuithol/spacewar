@@ -2,6 +2,7 @@ import ctypes
 import pygame
 import pygame.locals
 import pygame.math
+import pygame.joystick
 
 from dark_math import *
 
@@ -132,7 +133,7 @@ class Arena:
 			image_rotation_offset
 		)
 
-		self.text.append(f"Alliance Rect: {self.fighter_alliance.get_rect()}")
+#		self.text.append(f"Alliance Rect: {self.fighter_alliance.get_rect()}")
 		self.fighter_federation = Fighter(
 			fighter_position_federation,
 			velocity_none,
@@ -143,7 +144,7 @@ class Arena:
 			image_rotation_offset
 		)
 
-		self.text.append(f"Federation Rect: {self.fighter_federation.get_rect()}")
+#		self.text.append(f"Federation Rect: {self.fighter_federation.get_rect()}")
 		'''
 		self.fighter_federation = Planet(fighter_image_federation, fighter_position_federation)
 
@@ -155,7 +156,7 @@ class Arena:
 		planet_position = sub2(div2(screen.get_size(), 2), div2(planet_size, 2))
 		self.planet = Planet(planet_image, planet_position)
 
-		self.text.append(f"Planet Rect: {self.planet.get_rect()}")
+#		self.text.append(f"Planet Rect: {self.planet.get_rect()}")
 
 		#
 		# Create collections
@@ -198,14 +199,50 @@ def start_round(screen_handle):
 	font = pygame.font.SysFont('arial', 32)
 	arena = Arena(screen_handle)
 	clock = pygame.time.Clock()
+
+	joysticks = {}
+	joystick = None
+
+	alliance_axis = 0
+
 	while True:
 		for event in pygame.event.get():
 			if event.type == pygame.locals.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
 				pygame.quit()
 				quit()
 			else:
-				# event handler. for updating game state based on user input.
-				pass
+
+				if event.type == pygame.JOYAXISMOTION:
+					print("Joystick axis moved.")
+					joystick = joysticks[event.instance_id]
+					alliance_axis = joystick.get_axis(0)
+
+				if event.type == pygame.JOYBUTTONDOWN:
+					print("Joystick button pressed.")
+					if event.button == 0:
+						arena.fighter_alliance.fire_thrusters()
+						#joystick = joysticks[event.instance_id]
+
+
+				if event.type == pygame.JOYBUTTONUP:
+					print("Joystick button released.")
+
+				# Handle hotplugging
+				if event.type == pygame.JOYDEVICEADDED:
+					# This event will be generated when the program starts for every
+					# joystick, filling up the list without needing to create them manually.
+					joy = pygame.joystick.Joystick(event.device_index)
+					joysticks[joy.get_instance_id()] = joy
+					print(f"Joystick {joy.get_instance_id()} connencted")
+
+				if event.type == pygame.JOYDEVICEREMOVED:
+					del joysticks[event.instance_id]
+					print(f"Joystick {event.instance_id} disconnected")
+
+		if alliance_axis < -0.1:
+			arena.fighter_alliance.rotate_anticlockwise()
+		if alliance_axis > +0.1:
+			arena.fighter_alliance.rotate_clockwise()
 
 		arena.tick()
 		screen_handle.fill((0,0,0))
@@ -228,6 +265,7 @@ def start_round(screen_handle):
 
 def init():
 	pygame.init()
+	pygame.joystick.init()
 	ctypes.windll.user32.SetProcessDPIAware()
 	system_resolution = ctypes.windll.user32.GetSystemMetrics(0), ctypes.windll.user32.GetSystemMetrics(1)
 	screen_handle = pygame.display.set_mode(system_resolution, pygame.FULLSCREEN, display=0)
