@@ -5,15 +5,7 @@ import pygame.math
 import pygame.joystick
 
 from dark_math import *
-
-def load_image(path, size):
-	print(f"Loading image asset from storage {path} scaled to surface {size}")
-	image = pygame.image.load(path).convert_alpha()
-	image = pygame.transform.scale(image, size)
-	return image
-
-def rotate_image(image, direction_degrees):
-	return pygame.transform.rotate(image, direction_degrees)
+from dark_image import *
 
 class Sprite:
 	def __init__(self, image, position):
@@ -44,7 +36,7 @@ class SpaceObject(Sprite):
 
 	def tick(self):
 		self.position = add2(self.position, self.velocity)
-		self.image = rotate_image(self.unrotated_image, self.direction + self.image_rotation_offset)
+		self.image = rotate_image_circular(self.unrotated_image, self.direction + self.image_rotation_offset)
 
 class Fighter(SpaceObject):
 	def __init__(self, position, velocity, direction, fighter_image, fighter_rotation_offset, bullet_image, bullet_rotation_offset):
@@ -52,6 +44,7 @@ class Fighter(SpaceObject):
 		self.bullet_image = bullet_image
 		self.bullet_rotation_offset = bullet_rotation_offset
 		self.rotation_speed = 5
+		self.thruster_power = 1
 
 	def fire_bullet(self):
 		# TODO: Adjust these
@@ -63,15 +56,16 @@ class Fighter(SpaceObject):
 
 	def fire_thrusters(self):
 		# TODO: Adjust these
-		force = mul2((10,10), degrees_to_normal2(self.direction))
+		force = mul2(degrees_to_normal2(self.direction), self.thruster_power)
+
 
 		self.accelerate(force)
 
 	def rotate_clockwise(self):
-		self.direction = self.direction - self.rotation_speed
+		self.direction = (self.direction - self.rotation_speed) % 360
 
 	def rotate_anticlockwise(self):
-		self.direction = self.direction + self.rotation_speed
+		self.direction = (self.direction + self.rotation_speed) % 360
 
 
 class Bullet(SpaceObject):
@@ -248,6 +242,10 @@ def start_round(screen_handle):
 		screen_handle.fill((0,0,0))
 		arena.draw()
 
+		arena.text.clear()
+		for directional in [arena.fighter_alliance, arena.fighter_federation]:
+			arena.text.append(f"Degrees {directional.direction}")
+
 		if len(arena.text) > 0:
 			text_to_render = '; '.join(arena.text)
 			textimage = font.render(text_to_render,True,(255,255,255),(0,0,0))
@@ -259,6 +257,10 @@ def start_round(screen_handle):
 		for drawable in [arena.fighter_alliance, arena.fighter_federation, arena.planet]:
 			pygame.draw.rect(screen_handle, (255,0,0), drawable.get_rect(), 3)
 		'''
+		for directional in [arena.fighter_alliance, arena.fighter_federation]:
+			startpoint = directional.get_rect().center
+			endpoint = add2(startpoint, mul2(degrees_to_normal2(directional.direction), 100))
+			pygame.draw.line(screen_handle, (255,0,0), startpoint, endpoint, 3)
 
 		pygame.display.flip()
 		clock.tick(60)
