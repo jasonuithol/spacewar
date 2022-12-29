@@ -75,7 +75,7 @@ def normal_to_degrees2(a):
     return (math.atan2(x, y) * 180 / math.pi) - 90
 
 def degrees_to_normal2(a):
-    return math.cos(math.radians(a + 90)), math.sin(math.radians(a + 90))
+    return (math.cos(math.radians((a + 0) * -1)), math.sin(math.radians((a + 0) * -1)))
 
 def confine2(position, size, boundary):
     x, y = position
