@@ -140,7 +140,7 @@ class Bullet(SpaceObject):
 class Planet(Sprite):
 	def __init__(self, planet_image, position):
 		super().__init__(planet_image, position)
-		self.gravity_strength = 0.10
+		self.gravity_strength = 0.05
 
 	def assert_gravity_force(self, space_object):
 		force = mul2(normal2(sub2(self.get_rect().center, space_object.get_rect().center)), self.gravity_strength)
@@ -163,6 +163,8 @@ class Arena:
 		#
 		fighter_offset = (100,100)
 
+		# TODO: Tune the start position of alliance so that if the game starts with
+		# both players AFK, then both collide into the planet at the same time.
 		fighter_position_alliance = fighter_offset
 		fighter_direction_alliance = normal_to_degrees2(normal2((+3,+2)))
 
@@ -184,7 +186,7 @@ class Arena:
 		#
 		# Create planet
 		#
-		planet_size = (200,200)
+		planet_size = (100,100)
 		planet_image = load_image('images/planet.png', planet_size)
 		planet_position = sub2(div2(screen.get_size(), 2), div2(planet_size, 2))
 
@@ -192,8 +194,8 @@ class Arena:
 
 	def __load_fighter_team__(self, team_name, fighter_position, fighter_direction):
 
-		fighter_size = (100,100)
-		bullet_size = (20,20)
+		fighter_size = (50,50)
+		bullet_size = (10,10)
 		image_rotation_offset = -90
 
 		fighter_image = RotatableImage(
@@ -257,6 +259,39 @@ class Arena:
 				# we don't know which collection it's in but these methods check that for us.
 				self.remove_alliance_bullet(limited)
 				#self.remove_federation_bullet(limited)
+
+		alliance_collide = False
+		federation_collide = False
+		# Planet collision
+		if self.fighter_alliance.get_rect().colliderect(self.planet.get_rect()):
+			alliance_collide = True
+		'''
+		if self.fighter_federation.get_rect().colliderect(self.planet.get_rect()):
+			alliance_collide = True
+		'''
+		# Fighter-on-fighter collision
+		if self.fighter_alliance.get_rect().colliderect(self.fighter_federation.get_rect()):
+			alliance_collide = True
+			federation_collide = True
+		# Bullet collision - no friendly fire
+		for bullet in self.federation_bullets:
+			if self.fighter_alliance.get_rect().colliderect(bullet.get_rect()):
+				alliance_collide = True
+		for bullet in self.alliance_bullets:
+			if self.fighter_federation.get_rect().colliderect(bullet.get_rect()):
+				federation_collide = True
+
+		if alliance_collide or federation_collide:
+			if not alliance_collide and federation_collide:
+				print("Alliance win.")
+			elif alliance_collide and not federation_collide:
+				print("Federation win.")
+			else:
+				print("It's a draw.")
+
+			# TODO: properly have an ending
+			pygame.quit()
+			quit()
 
 		'''
 		# TODO: Remove groups by calling individual sprite collision detection
