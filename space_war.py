@@ -247,6 +247,17 @@ class Arena:
 			return
 		self.alliance_bullets.remove(bullet)
 
+	def add_federation_bullet(self):
+		if len(self.federation_bullets) >= self.bullet_maximum:
+			return
+		bullet = self.fighter_federation.fire_bullet()
+		self.federation_bullets.append(bullet)
+
+	def remove_federation_bullet(self, bullet):
+		if not bullet in self.federation_bullets:
+			return
+		self.federation_bullets.remove(bullet)
+
 	def tick(self):
 
 		for moveable in self.moveable():
@@ -258,17 +269,15 @@ class Arena:
 			if limited.get_lifetime_tick_count() > self.maximum_bullet_lifetime_ticks:
 				# we don't know which collection it's in but these methods check that for us.
 				self.remove_alliance_bullet(limited)
-				#self.remove_federation_bullet(limited)
+				self.remove_federation_bullet(limited)
 
 		alliance_collide = False
 		federation_collide = False
 		# Planet collision
 		if self.fighter_alliance.get_rect().colliderect(self.planet.get_rect()):
 			alliance_collide = True
-		'''
 		if self.fighter_federation.get_rect().colliderect(self.planet.get_rect()):
-			alliance_collide = True
-		'''
+			federation_collide = True
 		# Fighter-on-fighter collision
 		if self.fighter_alliance.get_rect().colliderect(self.fighter_federation.get_rect()):
 			alliance_collide = True
@@ -293,26 +302,6 @@ class Arena:
 			pygame.quit()
 			quit()
 
-		'''
-		# TODO: Remove groups by calling individual sprite collision detection
-		alliance_collide = spritecollide(self.fighter_alliance, Group(self.collidable), True)
-		federation_collide = spritecollide(self.fighter_federation, Group(self.collidable), True)
-
-		if len(alliance_collide) > 0 and len(federation_collide) > 0:
-			# TODO: Game over: draw
-			return (0,0)
-
-		if len(alliance_collide) > 0:
-			# TODO: Game over: federation win
-			return (0,1)
-
-		if len(federation_collide) > 0:
-			# TODO: Game over: alliance win
-			return (1,0)
-
-		return None
-		'''
-
 	def draw(self):
 		for drawable in self.drawable():
 			drawable.draw(self.screen)
@@ -323,10 +312,13 @@ def start_round(screen_handle):
 	clock = pygame.time.Clock()
 
 	joysticks = {}
-	joystick = None
+	joystick_instances = []
 
 	alliance_axis_rotate = 0
 	alliance_axis_thruster = 0
+
+	federation_axis_rotate = 0
+	federation_axis_thruster = 0
 
 	while True:
 		for event in pygame.event.get():
@@ -337,14 +329,21 @@ def start_round(screen_handle):
 
 				if event.type == pygame.JOYAXISMOTION:
 					joystick = joysticks[event.instance_id]
-					alliance_axis_rotate = joystick.get_axis(0)
-					alliance_axis_thruster = joystick.get_axis(5)
+					joystick_index = joystick_instances.index(event.instance_id)
+
+					if joystick_index == 0:
+						alliance_axis_rotate = joystick.get_axis(0)
+						alliance_axis_thruster = joystick.get_axis(5)
+					if joystick_index == 1:
+						federation_axis_rotate = joystick.get_axis(0)
+						federation_axis_thruster = joystick.get_axis(5)
 
 				if event.type == pygame.JOYBUTTONDOWN:
-					if event.button == 0:
+					joystick_index = joystick_instances.index(event.instance_id)
+					if event.button == 0 and joystick_index == 0:
 						arena.add_alliance_bullet()
-						#arena.fighter_alliance.fire_thrusters()
-						#joystick = joysticks[event.instance_id]
+					if event.button == 0 and joystick_index == 1:
+						arena.add_federation_bullet()
 
 				if event.type == pygame.JOYBUTTONUP:
 					pass
@@ -354,32 +353,60 @@ def start_round(screen_handle):
 					# This event will be generated when the program starts for every
 					# joystick, filling up the list without needing to create them manually.
 					joy = pygame.joystick.Joystick(event.device_index)
-					joysticks[joy.get_instance_id()] = joy
-					print(f"Joystick {joy.get_instance_id()} connencted")
+					joy_instance = joy.get_instance_id()
+					joysticks[joy_instance] = joy
+					joystick_instances.append(joy_instance)
+
+					print(f"Joystick {joy.get_instance_id()} ({len(joystick_instances)}) connected.")
 
 				if event.type == pygame.JOYDEVICEREMOVED:
 					del joysticks[event.instance_id]
-					print(f"Joystick {event.instance_id} disconnected")
+					joystick_instances.remove(event.instance_id)
+					print(f"Joystick {event.instance_id} {len(joystick_instances) + 1} disconnected.")
 
-		#
-		# Tick helpers for rotation and thrusters.
-		#
-		# Basically, axis movement events don't "repeat", they only fire if the axis value changes.
-		# So, we remember the last axis value in case there's no event, and then keep firing off
-		# tick level methods based on that remembered value, simulating a "repeat" style input.
-		#
-		if alliance_axis_rotate < -0.1:
-			arena.fighter_alliance.rotate_anticlockwise()
-		if alliance_axis_rotate > +0.1:
-			arena.fighter_alliance.rotate_clockwise()
-		if alliance_axis_thruster > +0.1:
-			arena.fighter_alliance.thrusters_on()
+
+		if len(joystick_instances) < 2:
+			arena.text.clear()
+			arena.text.append(f"Awaiting {2 - len(joystick_instances)} controllers to connect....")
 		else:
-			arena.fighter_alliance.thrusters_off()
 
-		arena.tick()
+			#
+			# Tick helpers for rotation and thrusters.
+			#
+			# Basically, axis movement events don't "repeat", they only fire if the axis value changes.
+			# So, we remember the last axis value in case there's no event, and then keep firing off
+			# tick level methods based on that remembered value, simulating a "repeat" style input.
+			#
+			if alliance_axis_rotate < -0.1:
+				arena.fighter_alliance.rotate_anticlockwise()
+			if alliance_axis_rotate > +0.1:
+				arena.fighter_alliance.rotate_clockwise()
+			if alliance_axis_thruster > +0.1:
+				arena.fighter_alliance.thrusters_on()
+			else:
+				arena.fighter_alliance.thrusters_off()
+
+			if federation_axis_rotate < -0.1:
+				arena.fighter_federation.rotate_anticlockwise()
+			if federation_axis_rotate > +0.1:
+				arena.fighter_federation.rotate_clockwise()
+			if federation_axis_thruster > +0.1:
+				arena.fighter_federation.thrusters_on()
+			else:
+				arena.fighter_federation.thrusters_off()
+
+			arena.tick()
+
+
+		#
+		# Draw game
+		#
 		screen_handle.fill((0,0,0))
 		arena.draw()
+
+		#
+		# Debug/diagnositics/text display
+		#
 
 		'''
 		arena.text.clear()
