@@ -65,6 +65,14 @@ def div2(a, b):
         bx,by = b
         return (ax/bx, ay/by)
 
+'''
+def centre2(a, b=None):
+    if b == None:
+        return div2(a, 2)
+    else:
+        return centre2(sub2(b, a))
+'''
+
 def normal2(a):
     ax,ay = a
     vector_length = len2(a)

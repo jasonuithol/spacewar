@@ -7,6 +7,9 @@ import pygame.joystick
 from dark_math import *
 from dark_image import *
 
+# set dark_image default transparency
+set_color_key((0,0,0))
+
 class Sprite:
 	def __init__(self, image, position):
 		self.image = image
@@ -20,58 +23,119 @@ class Sprite:
 		rect.x, rect.y = self.position
 		return rect
 
+class RotatableImage():
+	def __init__(self, image, rotation_offset_degrees):
+		self.image = image
+		self.rotation_offset_degrees = rotation_offset_degrees
+
+# TODO: In the future, an object should be able to be multiple sprites.
 class SpaceObject(Sprite):
-	def __init__(self, position, velocity, direction, image, image_rotation_offset):
-		super().__init__(image, position)
+	def __init__(self, position, velocity, direction, rotatable_image):
+		super().__init__(rotatable_image.image, position)
 		self.velocity = velocity
 		self.direction = direction
-		self.unrotated_image = image
-		self.image_rotation_offset = image_rotation_offset
+		self.set_rotatable_image(rotatable_image)
 
 		# force various properties to exist
+		# NOTE: This has already caused a bug.  Bad idea.
 		self.tick()
+
+	def set_rotatable_image(self, rotatable_image):
+		self.rotatable_image = rotatable_image
 
 	def accelerate(self, force):
 		self.velocity = add2(self.velocity, force)
 
 	def tick(self):
 		self.position = add2(self.position, self.velocity)
-		self.image = rotate_image_circular(self.unrotated_image, self.direction + self.image_rotation_offset)
+		self.image = rotate_image_circular(
+			self.rotatable_image.image, 
+			self.direction + self.rotatable_image.rotation_offset_degrees
+		)
+
+class Bullet(SpaceObject):
+	def __init__(self, position, velocity, direction, bullet_rot_image):
+		self.lifetime_tick_count = 0
+		super().__init__(
+			position, 
+			velocity, 
+			direction, 
+			bullet_rot_image
+		)
+
+	def tick(self):
+		self.lifetime_tick_count += 1
+		super().tick()
+
+	def get_lifetime_tick_count(self):
+		return self.lifetime_tick_count
+
 
 class Fighter(SpaceObject):
-	def __init__(self, position, velocity, direction, fighter_image, fighter_rotation_offset, bullet_image, bullet_rotation_offset):
-		super().__init__(position, velocity, direction, fighter_image, fighter_rotation_offset)
-		self.bullet_image = bullet_image
-		self.bullet_rotation_offset = bullet_rotation_offset
+	def __init__(self, position, direction, fighter_rot_image, bullet_rot_image, thrusters_rot_image):
+		self.fighter_rot_image = fighter_rot_image
+		self.bullet_rot_image = bullet_rot_image
+		self.thrusters_rot_image = thrusters_rot_image
 		self.rotation_speed = 5
-		self.thruster_power = 1
+		self.thruster_power = 0.15
+		self.show_thrusters = False
+
+		super().__init__(
+			position, 
+			(0,0), 
+			direction, 
+			fighter_rot_image
+		)
 
 	def fire_bullet(self):
 		# TODO: Adjust these
 		position = add2(self.position, mul2((20, 20), degrees_to_normal2(self.direction)))
 		velocity = add2(self.velocity, mul2((5, 5), degrees_to_normal2(self.direction)))
 
-		bullet = Bullet(self, position, velocity, self.direction, self.bullet_image, self.bullet_rotation_offset)
+		bullet = Bullet(
+			position, 
+			velocity, 
+			self.direction, 
+			self.bullet_rot_image
+		)
+
 		return bullet
 
-	def fire_thrusters(self):
+	def __fire_thrusters__(self):
 		# TODO: Adjust these
 		force = mul2(degrees_to_normal2(self.direction), self.thruster_power)
-
-
 		self.accelerate(force)
+
+	def thrusters_on(self):
+		self.show_thrusters = True
+
+	def thrusters_off(self):
+		self.show_thrusters = False
 
 	def rotate_clockwise(self):
 		self.direction = (self.direction - self.rotation_speed) % 360
 
 	def rotate_anticlockwise(self):
 		self.direction = (self.direction + self.rotation_speed) % 360
+	
+	def tick(self):
+		super().tick()
+		if self.show_thrusters == True:
+			self.__fire_thrusters__()
 
+	def draw(self, surface):
+		if self.show_thrusters == True:
+			self.set_rotatable_image(self.thrusters_rot_image)
+		else:
+			self.set_rotatable_image(self.fighter_rot_image)
+		super().draw(surface)
 
+'''
 class Bullet(SpaceObject):
 	def __init__(self, owner, position, velocity, direction, image, image_rotation_offset):
 		super().__init__(position, velocity, direction, image, image_rotation_offset)
 		self.owner = owner
+'''
 
 class Planet(Sprite):
 	def __init__(self, planet_image, position):
@@ -87,83 +151,112 @@ class Arena:
 
 		self.screen = screen
 		self.text = ['Loaded arena']
+		self.bullet_maximum = 5
+		self.alliance_bullets = []
+		self.federation_bullets = []
 
-		#
-		# Load images
-		#
-
-		fighter_size = (100,100)
-		bullet_size = (20,20)
-		planet_size = (200,200)
-
-		fighter_image_alliance = load_image('images/fighter_alliance.png', fighter_size)
-		bullet_image_alliance = load_image('images/bullet_alliance.png', bullet_size)
-
-		fighter_image_federation = load_image('images/fighter_federation.png', fighter_size)
-		bullet_image_federation = load_image('images/bullet_federation.png', bullet_size)
-
-		planet_image = load_image('images/planet.png', planet_size)
+		# About 3 seconds * 60 fps = 180 ticks.
+		self.maximum_bullet_lifetime_ticks = 180
 
 		#
 		# Create fighters
 		#
+		fighter_offset = (100,100)
 
-		fighter_position_alliance = fighter_size
+		fighter_position_alliance = fighter_offset
 		fighter_direction_alliance = normal_to_degrees2(normal2((+3,+2)))
 
-		fighter_position_federation = sub2(screen.get_size(), mul2((2,2), fighter_size))
+		self.fighter_alliance = self.__load_fighter_team__(
+			'alliance', 
+			fighter_position_alliance, 
+			fighter_direction_alliance
+		)
+
+		fighter_position_federation = sub2(screen.get_size(), mul2((2,2), fighter_offset))
 		fighter_direction_federation = normal_to_degrees2(normal2((-3,-2)))
 
-		velocity_none = (0,0)
-		image_rotation_offset = -90
-
-		self.fighter_alliance = Fighter(
-			fighter_position_alliance,
-			velocity_none,
-			fighter_direction_alliance,
-			fighter_image_alliance, 
-			image_rotation_offset,
-			bullet_image_alliance,
-			image_rotation_offset
+		self.fighter_federation = self.__load_fighter_team__(
+			'federation', 
+			fighter_position_federation, 
+			fighter_direction_federation
 		)
 
-#		self.text.append(f"Alliance Rect: {self.fighter_alliance.get_rect()}")
-		self.fighter_federation = Fighter(
-			fighter_position_federation,
-			velocity_none,
-			fighter_direction_federation,
-			fighter_image_federation, 
-			image_rotation_offset,
-			bullet_image_federation,
-			image_rotation_offset
-		)
-
-#		self.text.append(f"Federation Rect: {self.fighter_federation.get_rect()}")
-		'''
-		self.fighter_federation = Planet(fighter_image_federation, fighter_position_federation)
-
-		self.text.append(f"Federation Rect: {self.fighter_federation.get_rect()}")
-		'''
 		#
 		# Create planet
 		#
+		planet_size = (200,200)
+		planet_image = load_image('images/planet.png', planet_size)
 		planet_position = sub2(div2(screen.get_size(), 2), div2(planet_size, 2))
+
 		self.planet = Planet(planet_image, planet_position)
 
-#		self.text.append(f"Planet Rect: {self.planet.get_rect()}")
+	def __load_fighter_team__(self, team_name, fighter_position, fighter_direction):
 
-		#
-		# Create collections
-		#
-		self.collidable = [self.fighter_alliance, self.fighter_federation, self.planet]
-		self.drawable = [self.fighter_alliance, self.fighter_federation, self.planet]
-		self.moveable = [self.fighter_alliance, self.fighter_federation]
+		fighter_size = (100,100)
+		bullet_size = (20,20)
+		image_rotation_offset = -90
+
+		fighter_image = RotatableImage(
+			load_image(f"images/fighter_{team_name}.png", fighter_size),
+			image_rotation_offset
+		)
+
+		thrusters_image = RotatableImage(
+			load_image(f"images/fighter_{team_name}_thrusters.png", fighter_size),
+			image_rotation_offset
+		)
+
+		bullet_image = RotatableImage(
+			load_image(f"images/bullet_{team_name}.png", bullet_size),
+			image_rotation_offset
+		)
+
+		return Fighter(
+			fighter_position,
+			fighter_direction,
+			fighter_image, 
+			bullet_image,
+			thrusters_image
+		)
+
+	def __space_objects__(self):
+		return [self.fighter_alliance, self.fighter_federation] + self.alliance_bullets + self.federation_bullets
+
+	def collidable(self):
+		return self.__space_objects__() + [self.planet]
+
+	def drawable(self):
+		return self.__space_objects__() + [self.planet]
+
+	def moveable(self):
+		return self.__space_objects__()
+
+	def limited_lifespan(self):
+		return self.alliance_bullets + self.federation_bullets
+
+	def add_alliance_bullet(self):
+		if len(self.alliance_bullets) >= self.bullet_maximum:
+			return
+		bullet = self.fighter_alliance.fire_bullet()
+		self.alliance_bullets.append(bullet)
+
+	def remove_alliance_bullet(self, bullet):
+		if not bullet in self.alliance_bullets:
+			return
+		self.alliance_bullets.remove(bullet)
 
 	def tick(self):
 
-		for moveable in self.moveable:
+		for moveable in self.moveable():
 			self.planet.assert_gravity_force(moveable)
+			# TODO: dangerous - should really make "tickable"
 			moveable.tick()
+
+		for limited in self.limited_lifespan():
+			if limited.get_lifetime_tick_count() > self.maximum_bullet_lifetime_ticks:
+				# we don't know which collection it's in but these methods check that for us.
+				self.remove_alliance_bullet(limited)
+				#self.remove_federation_bullet(limited)
 
 		'''
 		# TODO: Remove groups by calling individual sprite collision detection
@@ -186,7 +279,7 @@ class Arena:
 		'''
 
 	def draw(self):
-		for drawable in [self.fighter_alliance, self.fighter_federation, self.planet]: #self.drawable
+		for drawable in self.drawable():
 			drawable.draw(self.screen)
 
 def start_round(screen_handle):
@@ -197,7 +290,8 @@ def start_round(screen_handle):
 	joysticks = {}
 	joystick = None
 
-	alliance_axis = 0
+	alliance_axis_rotate = 0
+	alliance_axis_thruster = 0
 
 	while True:
 		for event in pygame.event.get():
@@ -207,19 +301,18 @@ def start_round(screen_handle):
 			else:
 
 				if event.type == pygame.JOYAXISMOTION:
-					print("Joystick axis moved.")
 					joystick = joysticks[event.instance_id]
-					alliance_axis = joystick.get_axis(0)
+					alliance_axis_rotate = joystick.get_axis(0)
+					alliance_axis_thruster = joystick.get_axis(5)
 
 				if event.type == pygame.JOYBUTTONDOWN:
-					print("Joystick button pressed.")
 					if event.button == 0:
-						arena.fighter_alliance.fire_thrusters()
+						arena.add_alliance_bullet()
+						#arena.fighter_alliance.fire_thrusters()
 						#joystick = joysticks[event.instance_id]
 
-
 				if event.type == pygame.JOYBUTTONUP:
-					print("Joystick button released.")
+					pass
 
 				# Handle hotplugging
 				if event.type == pygame.JOYDEVICEADDED:
@@ -233,24 +326,36 @@ def start_round(screen_handle):
 					del joysticks[event.instance_id]
 					print(f"Joystick {event.instance_id} disconnected")
 
-		if alliance_axis < -0.1:
+		#
+		# Tick helpers for rotation and thrusters.
+		#
+		# Basically, axis movement events don't "repeat", they only fire if the axis value changes.
+		# So, we remember the last axis value in case there's no event, and then keep firing off
+		# tick level methods based on that remembered value, simulating a "repeat" style input.
+		#
+		if alliance_axis_rotate < -0.1:
 			arena.fighter_alliance.rotate_anticlockwise()
-		if alliance_axis > +0.1:
+		if alliance_axis_rotate > +0.1:
 			arena.fighter_alliance.rotate_clockwise()
+		if alliance_axis_thruster > +0.1:
+			arena.fighter_alliance.thrusters_on()
+		else:
+			arena.fighter_alliance.thrusters_off()
 
 		arena.tick()
 		screen_handle.fill((0,0,0))
 		arena.draw()
 
+		'''
 		arena.text.clear()
 		for directional in [arena.fighter_alliance, arena.fighter_federation]:
 			arena.text.append(f"Degrees {directional.direction}")
+		'''
 
 		if len(arena.text) > 0:
 			text_to_render = '; '.join(arena.text)
 			textimage = font.render(text_to_render,True,(255,255,255),(0,0,0))
 			screen_handle.blit(textimage, (0,0))
-			print(text_to_render)
 		
 		'''
 		# debug rectangles
