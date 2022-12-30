@@ -1,3 +1,4 @@
+from pickle import NONE
 import pygame.image
 import pygame.transform
 
@@ -11,11 +12,12 @@ def set_color_key(color):
 	global __color_key__
 	__color_key__ = color
 
-def load_image(path, size):
+def load_image(path, size=None):
 	global __color_key__
 	print(f"Loading image asset from storage {path} scaled to surface {size}")
 	image = pygame.image.load(path).convert_alpha()
-	image = pygame.transform.scale(image, size)
+	if not size == None:
+		image = pygame.transform.scale(image, size)
 	if not __color_key__ is None:
 		image.set_colorkey(__color_key__)
 	return image

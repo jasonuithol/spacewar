@@ -101,3 +101,18 @@ def midpoint2(a, b):
 def floor2(a):
     ax,ay = a
     return math.floor(ax), math.floor(ay)
+
+def are_equal2(a, b):
+    ax,ay = a
+    bx,by = b
+    return ax == bx and ay == by
+
+def min2(a, b):
+    ax,ay = a
+    bx,by = b
+    return min(ax, bx), min(ay, by)
+
+def max2(a, b):
+    ax,ay = a
+    bx,by = b
+    return max(ax, bx), max(ay, by)
