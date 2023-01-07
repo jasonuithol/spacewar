@@ -270,12 +270,14 @@ class Arena:
 	def limited_lifespan(self):
 		return self.alliance_bullets + self.federation_bullets + self.explosions
 
+	# TODO: make this add_bullet(fighter)
 	def add_alliance_bullet(self):
 		if len(self.alliance_bullets) >= self.bullet_maximum:
 			return
 		bullet = self.fighter_alliance.fire_bullet()
 		self.alliance_bullets.append(bullet)
 
+	# TODO: make this remove_bullet(fighter)
 	def remove_alliance_bullet(self, bullet):
 		if not bullet in self.alliance_bullets:
 			return
@@ -367,95 +369,169 @@ class Arena:
 		for drawable in self.drawable():
 			drawable.draw(self.screen)
 
-def start_round(screen_handle):
+class PlayerInputState:
+	def __init__(self):
 
-	global joysticks
-	global joystick_instances
+		self.axis_rotate = 0
+		self.axis_thruster = 0
+		self.fire_bullet = False
+
+	def apply_state(self, fighter, arena):
+		# Rotation
+		if self.axis_rotate < -0.1:
+			fighter.rotate_anticlockwise()
+		if self.axis_rotate > +0.1:
+			fighter.rotate_clockwise()
+		# Thrusters
+		if self.axis_thruster > +0.1:
+			fighter.thrusters_on()
+		else:
+			fighter.thrusters_off()
+		# Bullets
+		if self.fire_bullet == True:
+			arena.add_bullet(fighter)
+			self.fire_bullet = False
+
+class KeyboardControllerStateFactory():
+
+	def __init__(self):
+
+		self.player_states = {}
+
+	def process_event(self, event):
+		# Handle player input
+		if event.type == pygame.JOYAXISMOTION:
+			joystick = joysticks[event.instance_id]
+			joystick_index = joystick_instances.index(event.instance_id)
+			player_state = self.player_states[event.instance_id]
+
+			player_state.axis_rotate = joystick.get_axis(0)
+			player_state.axis_thruster = joystick.get_axis(5)
+
+		if event.type == pygame.JOYBUTTONDOWN:
+			joystick_index = joystick_instances.index(event.instance_id)
+			player_state = self.player_states[event.instance_id]
+			if event.button == 0:
+				player_state.fire_bullet = True
+
+		if event.type == pygame.JOYBUTTONUP:
+			pass
+
+		# Handle hotplugging
+		if event.type == pygame.JOYDEVICEADDED:
+			# This event will be generated when the program starts for every
+			# joystick, filling up the list without needing to create them manually.
+			self.__add_instance__(pygame.joystick.Joystick(event.device_index))
+
+		if event.type == pygame.JOYDEVICEREMOVED:
+			self.__remove_instance(event.instance_id)
+
+	def __add_instance__(self, joystick):
+		instance_id = joystick.get_instance_id()
+		self.joysticks[instance_id] = joystick
+		self.player_states[instance_id] = PlayerState()
+		self.joystick_instances.append(instance_id)
+		print(f"Joystick {instance_id} ({len(self.joystick_instances)}) connected.")
+
+	def __remove_instance__(self, instance_id):
+		del self.joysticks[event.instance_id]
+		del self.player_states[event.instance_id]
+		self.joystick_instances.remove(event.instance_id)
+		print(f"Joystick {instance_id} {len(self.joystick_instances) + 1} disconnected.")
+		
+	def get_instances(self):
+		return self.joystick_instances
+
+	def get_player_state(self, instance_id):
+		return self.player_states[instance_id]
+
+class XboxControllerStateFactory():
+
+	def __init__(self):
+
+		self.joystick_instances = []
+		self.joysticks = {}
+		self.player_states = {}
+
+		# TODO: This breaks if more than one type of controller factory exists.
+		pygame.joystick.init()
+
+	def process_event(self, event):
+		# Handle player input
+		if event.type == pygame.JOYAXISMOTION:
+			joystick = joysticks[event.instance_id]
+			joystick_index = joystick_instances.index(event.instance_id)
+			player_state = self.player_states[event.instance_id]
+
+			player_state.axis_rotate = joystick.get_axis(0)
+			player_state.axis_thruster = joystick.get_axis(5)
+
+		if event.type == pygame.JOYBUTTONDOWN:
+			joystick_index = joystick_instances.index(event.instance_id)
+			player_state = self.player_states[event.instance_id]
+			if event.button == 0:
+				player_state.fire_bullet = True
+
+		if event.type == pygame.JOYBUTTONUP:
+			pass
+
+		# Handle hotplugging
+		if event.type == pygame.JOYDEVICEADDED:
+			# This event will be generated when the program starts for every
+			# joystick, filling up the list without needing to create them manually.
+			self.__add_instance__(pygame.joystick.Joystick(event.device_index))
+
+		if event.type == pygame.JOYDEVICEREMOVED:
+			self.__remove_instance(event.instance_id)
+
+	def __add_instance__(self, joystick):
+		instance_id = joystick.get_instance_id()
+		self.joysticks[instance_id] = joystick
+		self.player_states[instance_id] = PlayerState()
+		self.joystick_instances.append(instance_id)
+		print(f"Joystick {instance_id} ({len(self.joystick_instances)}) connected.")
+
+	def __remove_instance__(self, instance_id):
+		del self.joysticks[event.instance_id]
+		del self.player_states[event.instance_id]
+		self.joystick_instances.remove(event.instance_id)
+		print(f"Joystick {instance_id} {len(self.joystick_instances) + 1} disconnected.")
+		
+	def get_instances(self):
+		return self.joystick_instances
+
+	def get_player_state(self, instance_id):
+		return self.player_states[instance_id]
+
+def start_round(screen_handle):
 
 	font = pygame.font.SysFont('arial', 32)
 	arena = Arena(screen_handle)
 	clock = pygame.time.Clock()
 
-	alliance_axis_rotate = 0
-	alliance_axis_thruster = 0
+	xbox_controller_state_factory = XboxControllerStateFactory()
 
-	federation_axis_rotate = 0
-	federation_axis_thruster = 0
+	# TODO: its going to be more complicated than this.
+	fighters = [arena.fighter_alliance, arena.fighter_federation]
 
 	while arena.is_alive():
+		# Process input events.
 		for event in pygame.event.get():
 			if event.type == pygame.locals.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
 				pygame.quit()
 				quit()
 			else:
+				xbox_controller_state_factory.process_event(event)
 
-				if event.type == pygame.JOYAXISMOTION:
-					joystick = joysticks[event.instance_id]
-					joystick_index = joystick_instances.index(event.instance_id)
-
-					if joystick_index == 0:
-						alliance_axis_rotate = joystick.get_axis(0)
-						alliance_axis_thruster = joystick.get_axis(5)
-					if joystick_index == 1:
-						federation_axis_rotate = joystick.get_axis(0)
-						federation_axis_thruster = joystick.get_axis(5)
-
-				if event.type == pygame.JOYBUTTONDOWN:
-					joystick_index = joystick_instances.index(event.instance_id)
-					if event.button == 0 and joystick_index == 0:
-						arena.add_alliance_bullet()
-					if event.button == 0 and joystick_index == 1:
-						arena.add_federation_bullet()
-
-				if event.type == pygame.JOYBUTTONUP:
-					pass
-
-				# Handle hotplugging
-				if event.type == pygame.JOYDEVICEADDED:
-					# This event will be generated when the program starts for every
-					# joystick, filling up the list without needing to create them manually.
-					joy = pygame.joystick.Joystick(event.device_index)
-					joy_instance = joy.get_instance_id()
-					joysticks[joy_instance] = joy
-					joystick_instances.append(joy_instance)
-
-					print(f"Joystick {joy.get_instance_id()} ({len(joystick_instances)}) connected.")
-
-				if event.type == pygame.JOYDEVICEREMOVED:
-					del joysticks[event.instance_id]
-					joystick_instances.remove(event.instance_id)
-					print(f"Joystick {event.instance_id} {len(joystick_instances) + 1} disconnected.")
-
-		if len(joystick_instances) < 2:
+		# Apply input to game state.
+		instance_ids = xbox_controller_state_factory.get_instances()
+		if len(instance_ids) < 2:
 			arena.text.clear()
-			arena.text.append(f"Awaiting {2 - len(joystick_instances)} controllers to connect....")
+			arena.text.append(f"Awaiting {2 - len(instance_ids)} controllers to connect....")
 		else:
-
-			#
-			# Tick helpers for rotation and thrusters.
-			#
-			# Basically, axis movement events don't "repeat", they only fire if the axis value changes.
-			# So, we remember the last axis value in case there's no event, and then keep firing off
-			# tick level methods based on that remembered value, simulating a "repeat" style input.
-			#
-			if alliance_axis_rotate < -0.1:
-				arena.fighter_alliance.rotate_anticlockwise()
-			if alliance_axis_rotate > +0.1:
-				arena.fighter_alliance.rotate_clockwise()
-			if alliance_axis_thruster > +0.1:
-				arena.fighter_alliance.thrusters_on()
-			else:
-				arena.fighter_alliance.thrusters_off()
-
-			if federation_axis_rotate < -0.1:
-				arena.fighter_federation.rotate_anticlockwise()
-			if federation_axis_rotate > +0.1:
-				arena.fighter_federation.rotate_clockwise()
-			if federation_axis_thruster > +0.1:
-				arena.fighter_federation.thrusters_on()
-			else:
-				arena.fighter_federation.thrusters_off()
-
+			for fighter_index, instance_id in enumerate(instance_ids):
+				player_state = xbox_controller_state_factory.get_player_state(instance_id)
+				player_state.apply_state(fighters[fighter_index], arena)
 			arena.tick()
 
 		#
@@ -505,8 +581,6 @@ def init():
 # Execution starts here.
 #
 screen_handle = init()
-joysticks = {}
-joystick_instances = []
 
 alliance_score = 0
 federation_score = 0

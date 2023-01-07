@@ -94,9 +94,10 @@ def confine2(position, size, boundary):
     return x, y
 
 def midpoint2(a, b):
-    ax,ay = a
-    bx,by = b
-    return (ax + bx)/2, (ay + by)/2
+    return div2(add2(a, b),2)
+
+def half_offset2(a, b):
+    return div2(sub2(a,b),2)
 
 def floor2(a):
     ax,ay = a
