@@ -392,6 +392,25 @@ class PlayerInputState:
 			arena.add_bullet(fighter)
 			self.fire_bullet = False
 
+class AiController():
+
+	def process_event(self, event):
+		#
+		# We ignore all actual player events
+		#
+
+		# Calculate firing solution
+
+		# Are we oriented correctly ?
+		# yes: fire
+		# no: choose firing rotate direction
+
+		# are we going to crash into the planet ?
+		# yes: can we accelerate out of danger without rotation ?
+		pass
+
+
+
 class KeyboardControllerStateFactory():
 
 	def __init__(self):
